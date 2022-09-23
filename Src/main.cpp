@@ -14,6 +14,8 @@
 #include "sgp30.h"
 #include <string>
 #include "spi.h"
+#include "adc.h"
+#include "voltageconverter.h"
 
 #include "oled1306.h"
 
@@ -27,6 +29,8 @@ struct bme680_dev gsens;
 Serial serial;
 RTCTime time;//using to configure and read realtime
 uint8_t flagSecund{ 0 };
+AnalogConverter adc;
+
 void RTCIrq_Handler()
 {
 	if((RTC->MISR & 0x00000001) == 0x00000001){ RTC->SCR |= 0x00000001; /*flagMinute = 1;*/}
@@ -281,27 +285,27 @@ int8_t readI2C2Simple(uint8_t addrMode, uint16_t deviceAddress, uint8_t count, u
 int8_t writeI2CBME(uint8_t dev_id, uint8_t reg_addr, uint8_t *data, uint16_t len)
 {
 
-	writeI2C2(0,dev_id<<1,reg_addr,len,data,false);
-	return 0;
+	return writeI2C2(0,dev_id<<1,reg_addr,len,data,false);
+	//return 0;
 }
 
 int8_t readI2CBME(uint8_t dev_id, uint8_t reg_addr, uint8_t *data, uint16_t len)
 {
-	readI2C2(0, dev_id<<1, reg_addr, len, data, false);
-	return 0;
+	return readI2C2(0, dev_id<<1, reg_addr, len, data, false);
+	//return 0;
 }
 
 uint8_t writeI2CSHT(uint8_t dev_id, uint8_t *data, uint16_t len)
 {
 
-	writeI2C2(0,dev_id<<1,data[0],len-1,data+1,false);
-	return 0;
+	return writeI2C2(0,dev_id<<1,data[0],len-1,data+1,false);
+	//return 0;
 }
 
 uint8_t readI2CSHT(uint8_t dev_id, uint8_t *data, uint16_t len)
 {
-	readI2C2Simple(0, dev_id<<1,len, data);
-	return 0;
+	return readI2C2Simple(0, dev_id<<1,len, data);
+	//return 0;
 }
 
 void delaymsBME(long unsigned int delay)
@@ -455,7 +459,7 @@ void initializeSensors()
 
 int main()
 {
-
+	VoltageConverter vMeter { 1000000, 2700000, 4095, 3.3 };
 	serial.begin();
 	serial.DEBG("Starting hardware initialization...");
 	serial.DEBG("RTC initialization...");
@@ -484,8 +488,7 @@ int main()
 
 
 	sgp30Sensor.setInterface(readI2C2, writeI2C2, readI2C2Simple);
-
-			sgp30Sensor.probe();
+	sgp30Sensor.probe();
 			uint16_t feature_set_version;
 			uint8_t product_type;
 
@@ -605,6 +608,9 @@ int main()
 	display.reset();
 	display.init(128, 64);
 
+	adc.init();
+	//pb0
+	adc.initChannels(AnalogConverter::ADC_8 | AnalogConverter::ADC_9 | AnalogConverter::ADC_7);
 
 
 	/*std::string humidityString = new std::string("");
@@ -657,16 +663,20 @@ int main()
 	{
 
 
-
+		float vbat { 0 };
 		int32_t tSHT40, hSHT40;
 
 		if(flagSecund)
 		{
 			//sht40
-			sensor->read(&tSHT40, &hSHT40);
-			sensor->startMeasure();
-
 			flagSecund = 0;
+
+			vbat = vMeter.getVoltage(adc.getDataFiltered(AnalogConverter::ADC_8));
+			//GET SHT40 DATA
+			bool shtErr = sensor->read(&tSHT40, &hSHT40);
+			if(shtErr == 0) shtErr = sensor->startMeasure();
+			if(shtErr!=0){ LOG->DEBG("SHT40 Reading Error!");}
+
 
 
 			uint16_t tvoc;
@@ -674,14 +684,13 @@ int main()
 			uint8_t  raw_i;
 			uint16_t raw_v;
 			uint8_t status { 0 };
+			bool ccs811Err { 0 };
 			//// get the results and do something with them
-			if (sensor811.getResults(&tvoc, &eco2, &raw_i, &raw_v))
-			{
-
-			}
+			if (sensor811.getResults(&tvoc, &eco2, &raw_i, &raw_v)){}
 			else
 			{
 				LOG->DEBG("Error get results from CCS811!!!");
+				ccs811Err = true;
 			}
 
 			if(sensor811.getStatus(&status)){
@@ -690,108 +699,157 @@ int main()
 			else
 				LOG->DEBG("Error get status from CCS811!");
 
-			result = bme680_get_sensor_data(&data, &gsens);
 
-
-
-			if(data.status & BME680_GASM_VALID_MSK){}
-
-
-			if (gsens.power_mode == BME680_FORCED_MODE)
+			//BME680
+			bool bme680Err = bme680_get_sensor_data(&data, &gsens);
+			if(bme680Err){ LOG->DEBG("Error reading BME680!"); }
+			else
 			{
-				result = bme680_set_sensor_mode(&gsens);
+				if(data.status & BME680_GASM_VALID_MSK){}
+
+
+				if (gsens.power_mode == BME680_FORCED_MODE)
+				{
+					result = bme680_set_sensor_mode(&gsens);
+				}
 			}
 
-			err = sgp30Sensor.readIAQ(&tvoc_ppb, &co2_eq_ppm);
-			if (err == SGP30::STATUS_OK) {
-				//LOG->DEBG("tVOC  Concentration: ppb\n", tvoc_ppb);
-				//LOG->DEBG("CO2eq Concentration: ppm\n", co2_eq_ppm);
-			} else {
+			//SGP30
+
+			bool sgp30Err = sgp30Sensor.readIAQ(&tvoc_ppb, &co2_eq_ppm);
+			if (err == SGP30::STATUS_OK)
+			{
+				sgp30Err = sgp30Sensor.measureIAQ();
+				if(sgp30Err == SGP30::STATUS_OK)
+				{
+
+				}
+				else
+					LOG->DEBG("Start measure SGP30 errr!");
+
+			} else
+			{
 				LOG->DEBG("error reading SGP30 IAQ values\n");
 			}
 
-			err = sgp30Sensor.measureIAQ();
-			if(err == SGP30::STATUS_OK)
-			{//LOG->DEBG("Start measure success!");
-
-			}
-			else
-				LOG->DEBG("Start measure SGP30 errr!");
 
 			//
 			gas_reference = (float)data.gas_resistance;
 			int value = getGasScore();
 			int score = (100-value)*5;
-			std::string* str = new std::string(" ");
+
+		/*	std::string* str = new std::string(" ");
 			//str = "";
-			*str= std::to_string(tSHT40/1000);
+			if(!shtErr) *str= std::to_string(tSHT40/1000);else {}
 			*str+="\370";
 			*str+= "C, ";
-			*str+= std::to_string(data.temperature/100);
+			if(!bme680Err) *str+= std::to_string(data.temperature/100);
 			*str+="\370";
 			*str+="C, ";
-			*str+= std::to_string(hSHT40/1000);
+			if(!shtErr)*str+= std::to_string(hSHT40/1000); else {}
 			*str+="%, ";
-			*str+= std::to_string(data.humidity/1000);
+			if(!bme680Err) *str+= std::to_string(data.humidity/1000); else {}
 			*str+= "%, ";
-			*str+= std::to_string(data.pressure);
+			if(!bme680Err) *str+= std::to_string(data.pressure); else {}
 			*str+= "Pa, VOC(CCS811) = ";
-			*str+= std::to_string(tvoc);
+			if(!ccs811Err) *str+= std::to_string(tvoc); else {}
 			*str+= ", VOC(SGP30) = ";
-			*str+= std::to_string(tvoc_ppb);
+			if(!sgp30Err) *str+= std::to_string(tvoc_ppb); else {}
 			*str+= ", ECO2(CCS811)";
-			*str+= std::to_string(eco2);
+			if(!ccs811Err) *str+= std::to_string(eco2); else {}
 			*str+= ", ECO2(SGP30) = ";
-			*str+= std::to_string(co2_eq_ppm);
+			if(!sgp30Err) *str+= std::to_string(co2_eq_ppm);
 			*str+= ", RES(BME680) = ";
-			*str+= std::to_string(data.gas_resistance);
+			if(!bme680Err) *str+= std::to_string(data.gas_resistance);
 			*str+= ", GAS(BME680) = ";
-			*str+= std::to_string(value);
+			if(!bme680Err) *str+= std::to_string(value);
 			*str+= ", GS(BME680) = ";
-			*str+= std::to_string(score);
+			if(!bme680Err) *str+= std::to_string(score);
 
 			LOG->DEBG(str->c_str());
 
 			std::string* str2 = new std::string(" ");
 			delete str;
 
-			*str2= std::to_string(tSHT40);
+			if(!shtErr) *str2= std::to_string(tSHT40);
 			*str2+= ",";
-			*str2+= std::to_string(data.temperature);
+			if(!bme680Err) *str2+= std::to_string(data.temperature);
 			*str2+=",";
-			*str2+= std::to_string(hSHT40);
+			if(!shtErr) *str2+= std::to_string(hSHT40);
 			*str2+=",";
-			*str2+= std::to_string(data.humidity);
+			if(!bme680Err) *str2+= std::to_string(data.humidity);
 			*str2+= ",";
-			*str2+= std::to_string(data.pressure);
+			if(!bme680Err) *str2+= std::to_string(data.pressure);
 			*str2+= ",";
-			*str2+= std::to_string(tvoc);
+			if(!ccs811Err) *str2+= std::to_string(tvoc);
 			*str2+= ",";
-			*str2+= std::to_string(tvoc_ppb);
+			if(!sgp30Err) *str2+= std::to_string(tvoc_ppb);
 			*str2+= ",";
-			*str2+= std::to_string(eco2);
+			if(!ccs811Err)  *str2+= std::to_string(eco2);
 			*str2+= ",";
-			*str2+= std::to_string(co2_eq_ppm);
+			if(!sgp30Err) *str2+= std::to_string(co2_eq_ppm);
 			*str2+= ",";
-			*str2+= std::to_string(data.gas_resistance);
+			if(!bme680Err) *str2+= std::to_string(data.gas_resistance);
 			*str2+= ",";
-			*str2+= std::to_string(value);
+			if(!bme680Err)*str2+= std::to_string(value);
 
 			*str2+= ",";
-			*str2+= std::to_string(score);
+			if(!bme680Err)*str2+= std::to_string(score);
 
 			LOG->DATA(str2->c_str());
 
-			delete str2;
+			delete str2;*/
 
 			std::string *weatherString = new std::string(" ");
 			*weatherString = "t";
-			*weatherString+= std::to_string(((int)(tSHT40/1000) + (int)(data.temperature/100))/2);
-			*weatherString+="C  ";
-			*weatherString+=std::to_string((int)((data.humidity/1000) + (int)(hSHT40/1000))/2);
-			*weatherString += "%  ";
-			*weatherString += std::to_string((int)((float)data.pressure/133.3));
+			if(!bme680Err && !shtErr)
+			{
+				*weatherString+= std::to_string(((int)(tSHT40/1000) + (int)(data.temperature/100))/2);
+				*weatherString+="C  ";
+				*weatherString+=std::to_string((int)((data.humidity/1000) + (int)(hSHT40/1000))/2);
+				*weatherString += "%  ";
+				*weatherString += std::to_string((int)((float)data.pressure/133.3));
+
+			}
+			else
+			{
+				if(shtErr)
+				{
+					*weatherString+= std::to_string((int)(data.temperature/100));
+					*weatherString+="C  ";
+					*weatherString+=std::to_string((int)(data.humidity/1000));
+					*weatherString += "%  ";
+					*weatherString += std::to_string((int)((float)data.pressure/133.3));
+				}
+				else
+				{
+					if(!bme680Err)
+						{
+						*weatherString+= std::to_string(((int)(tSHT40/1000) + (int)(data.temperature/100))/2);
+						*weatherString+="C  ";
+								*weatherString+=std::to_string((int)((data.humidity/1000) + (int)(hSHT40/1000))/2);
+								*weatherString += "%  ";
+								*weatherString += std::to_string((int)((float)data.pressure/133.3));
+						}
+					else
+					{
+
+						*weatherString += "Err!";
+						*weatherString+="C  ";
+								*weatherString+="Err!";
+								*weatherString += "%  ";
+
+					}
+				}
+			}
+
 			*weatherString += "ммрс";
+
+			//*weatherString+="C  ";
+			//*weatherString+=std::to_string((int)((data.humidity/1000) + (int)(hSHT40/1000))/2);
+			//*weatherString += "%  ";
+			//*weatherString += std::to_string((int)((float)data.pressure/133.3));
+			//*weatherString += "ммрс";
 
 			//std::string* humidityString = new std::string(" ");
 			//	*humidityString = "Влажнoсть-";
@@ -830,6 +888,11 @@ int main()
 				*CO2String += std::to_string(co2_eq_ppm);
 				*CO2String += ")";
 
+				std::string* bmeString = new std::string(" ");
+				*bmeString = "BME -";
+				*bmeString += std::to_string(500-((data.gas_resistance-50000)/400));
+				*bmeString += " IAQ";
+
 				std::string* resistanceString = new std::string(" ");
 				*resistanceString = "Сопр.-";
 				*resistanceString += std::to_string(data.gas_resistance);
@@ -838,15 +901,18 @@ int main()
 
 				std::string* voltageString = new std::string(" ");
 				*voltageString = "Напр. АКБ-";
-				*voltageString += std::to_string(4.22);
+				*voltageString += std::to_string((int)(vbat*1000.0));
+
+
 
 				display.drawString(*weatherString,0,0);
 				//display.drawString(*humidityString,0,8);
 				//display.drawString(*pressureString,0,16);
 				display.drawString(*TVOCString,0,24);
-			display.drawString(*CO2String,0,32);
-				display.drawString(*resistanceString,0,40);
-			//	display.drawString(*voltageString,0,48);
+				display.drawString(*CO2String,0,32);
+				display.drawString(*bmeString,0,40);
+				display.drawString(*resistanceString,0,48);
+				display.drawString(*voltageString,0,8);
 				display.refresh();
 
 			//	delete humidityString;
@@ -857,6 +923,7 @@ int main()
 				delete resistanceString;
 				delete weatherString;
 				delete voltageString;
+				delete bmeString;
 
 		}
 

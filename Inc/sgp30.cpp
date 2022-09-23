@@ -113,7 +113,7 @@ int16_t SGP30::readIAQ(uint16_t* tvoc_ppb, uint16_t* co2_eq_ppm) {
     ret = readI2CS(0,SGP30_I2C_ADDRESS, 4, (uint8_t*)words);
 
     *tvoc_ppb = words[1];
-    *co2_eq_ppm = words[0];
+    *co2_eq_ppm = ((words[0]&0xff00)>>8)|(words[0]<<8);
 
     return ret;
 }

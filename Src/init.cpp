@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "STM32G030.h"
+#include "adc.h"
 void init(void);
 void Default_Handler(void);
 void USART2_Handler(void);
@@ -62,7 +63,7 @@ const fptr Vectors[] __attribute__((section(".vectors"))) ={
 	Default_Handler, 	/* 6: EXTI2_3 */
 	Default_Handler,    /* 7: EXTI4_15 */
 	Default_Handler, 	/* 8: Reserved */
-	Default_Handler, 	/* 9: DMA_CH1 */
+	AnalogConverter::DMA_Handler, 	/* 9: DMA_CH1 */
 	Default_Handler, 	/* 10: DMA_CH2_3 */
 	Default_Handler, 	/* 11: DMA_CH4_5_6_7 */
 	Default_Handler, 	/* 12: ADC/COMP */

@@ -62,10 +62,10 @@ void Serial::begin()
     enable_interrupts();
 }
 void Serial::eputc(char c)
-{    
+{   uint32_t timeout { 0 };
   //  while (TXBuffer.count >= SBUFSIZE); // wait if full
 //	if ( (USART2->CR1 & (1 << 3))==0)
-		while((USART2->CR1 &(1<<3)) != 0);
+		while((USART2->CR1 &(1<<3)) != 0){timeout++; if (timeout>10000) return;};
 	{ // transmitter was idle, turn it on and force out first character
         USART2->CR1 |= (1 << 3);
         USART2->TDR = c; //getBuf(TXBuffer);		
