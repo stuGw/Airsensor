@@ -11,8 +11,8 @@
 //Calculate value from ADC with R1, R2 divider
 
 class VoltageConverter {
-	uint32_t R1 { 10000 };
-	uint32_t R2 { 10000 };
+	float R1 { 10000 };
+	float R2 { 10000 };
 
 	float RCoef { 5001 };
 

@@ -15,7 +15,7 @@ VoltageConverter::VoltageConverter(uint32_t R1Value, uint32_t R2Value, uint16_t 
 		maxResValue = maxResolutionValue;
 		maxResVoltage = maxResolutionVoltage;
 		voltageDiscrete = maxResVoltage/static_cast<float>(maxResValue);
-		RCoef = R1/R2 + 1;
+		RCoef = R1/R2 + 1.0;
 	}
 
 VoltageConverter::~VoltageConverter() {

@@ -47,9 +47,16 @@ public:
 	void putPixelNext(uint16_t color);
 	void drawGraph(uint8_t* data, uint8_t x, uint8_t y);
 	void drawCharFromGraphicArray(uint8_t c,  uint8_t x, uint8_t y);
+	void drawChar8x16FromGraphicArray(uint8_t c,  uint8_t x, uint8_t y);
+	void drawStringUtf8x16(const char* str, uint8_t x, uint8_t y);
 	void drawStringUtf(const char* str, uint8_t x, uint8_t y);
 	void drawStringUtf(const char* str, int num, uint8_t x, uint8_t y);
 	void drawString(std::string str, uint8_t x, uint8_t y);
+	void drawHorizontalLine(uint8_t xStart, uint8_t xEnd, uint8_t y);
+	void clearHorizontalLine(uint8_t xStart, uint8_t xEnd, uint8_t y);
+	void drawBattery(uint16_t voltage, uint8_t x, uint8_t y, bool charging);
+	void drawVerticalLine(uint8_t yStart, uint8_t yEnd, uint8_t x);
+	//void drawSpecialChar(uint8_t schar, uint8_t x, uint8_t y);
 	void fill(uint8_t color);
 	void refresh();
 

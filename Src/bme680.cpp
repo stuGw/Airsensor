@@ -895,14 +895,14 @@ static int16_t calc_temperature(uint32_t temp_adc, struct bme680_dev *dev)
 	int64_t var3;
 	int16_t calc_temp;
 
-	LOG->DEBG("temp_adc = ", temp_adc);
+	//LOG->DEBG("temp_adc = ", temp_adc);
 	var1 = ((int32_t) temp_adc >> 3) - ((int32_t) dev->calib.par_t1 << 1);
 	var2 = (var1 * (int32_t) dev->calib.par_t2) >> 11;
 	var3 = ((var1 >> 1) * (var1 >> 1)) >> 12;
 	var3 = ((var3) * ((int32_t) dev->calib.par_t3 << 4)) >> 14;
 	dev->calib.t_fine = (int32_t) (var2 + var3);
 	calc_temp = (int16_t) (((dev->calib.t_fine * 5) + 128) >> 8);
-LOG->DEBG("TEMP = ", calc_temp);
+//LOG->DEBG("TEMP = ", calc_temp);
 	return calc_temp;
 }
 
