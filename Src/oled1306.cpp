@@ -8,6 +8,7 @@
 
 #include <string>
 #include <sstream>
+#include "logger.h"
 //#define INIT_DELAY 1000
 //#define CLEAR_DELAY 10000
 
@@ -243,6 +244,86 @@ void OLED1306Display::drawGraph(uint8_t* data, uint8_t x, uint8_t y)
 	}
 }
 
+
+void OLED1306Display::drawHorizontalLine(uint8_t xStart, uint8_t xEnd, uint8_t y)
+{
+	uint8_t maskedValue { 1 };
+	maskedValue = maskedValue<<(y%8);
+	//LOG->DEBG("y = ",y);
+	//LOG->DEBG("m = ",maskedValue);
+	for(int i = 0; i<xEnd; i++)
+	{
+		buffer[(y/PIXEL_PER_ROW)*cols+xStart+i]|=maskedValue;
+	}
+}
+#define LION_BATTERY_RANGE 1200
+#define LION_MAX_VOLTAGE 4200
+#define GRAPHIC_BATTERY_RANGE 22
+
+#define GRAPHIC_BATTERY_COEF (LION_BATTERY_RANGE/GRAPHIC_BATTERY_RANGE)
+
+
+void OLED1306Display::drawBattery(uint16_t voltage, uint8_t x, uint8_t y, bool charging)
+{
+	int8_t chargeGraphValueX = GRAPHIC_BATTERY_RANGE-(LION_MAX_VOLTAGE - voltage)/GRAPHIC_BATTERY_COEF;//()
+	if(chargeGraphValueX>22)chargeGraphValueX = 0;
+	if(chargeGraphValueX<0)chargeGraphValueX = GRAPHIC_BATTERY_RANGE;
+	int8_t i = 0;
+	uint8_t xBat = x+2;
+	static uint8_t battVal{ 0 };
+	if(charging)
+	{
+		battVal+=3;
+		if(battVal>22)battVal = 0;
+		drawCharFromGraphicArray(0x04, xBat + GRAPHIC_BATTERY_RANGE + 3, y);
+	}
+		else
+	{
+			battVal = chargeGraphValueX;
+			drawCharFromGraphicArray(' ', xBat +  GRAPHIC_BATTERY_RANGE + 3, y);
+	}
+
+	while(i<GRAPHIC_BATTERY_RANGE)
+	{
+		if(i<battVal)buffer[(y/PIXEL_PER_ROW)*cols+xBat+i] = 0xff; else buffer[(y/PIXEL_PER_ROW)*cols+xBat+i] = 0x81;
+		i++;
+	}
+
+
+
+	drawVerticalLine(y,31,xBat);
+	drawVerticalLine(y+1,30,x+1);
+	drawVerticalLine(y+1,30,x);
+	drawVerticalLine(y,31,xBat+22);
+}
+void OLED1306Display::clearHorizontalLine(uint8_t xStart, uint8_t xEnd, uint8_t y)
+{
+	uint8_t maskedValue { 1 };
+	maskedValue = maskedValue<<(y%8);
+	//LOG->DEBG("y = ",y);
+	//LOG->DEBG("m = ",maskedValue);
+	for(int i = 0; i<xEnd; i++)
+	{
+		buffer[(y/PIXEL_PER_ROW)*cols+xStart+i]&=~maskedValue;
+	}
+}
+
+//	{0x7f, 0x01, 0x01, 0x01, 0x03},//Г	0x83
+void OLED1306Display::drawVerticalLine(uint8_t yStart, uint8_t yEnd, uint8_t x)
+{
+	uint8_t maskedValue { 0x01 };
+	//maskedValue = maskedValue<<(rows%y);
+
+	for(int i = yStart; i<=yEnd; i++)
+	{
+		//if(i%8 == 0)maskedValue = 0x01;
+		//else
+		maskedValue = 0x01 << i%8;
+		LOG->DEBG("y = ",i);
+		LOG->DEBG("m = ",maskedValue);
+		buffer[(i/PIXEL_PER_ROW)*cols+x]|=maskedValue;
+	}
+}
 void OLED1306Display::drawCharFromGraphicArray(uint8_t c,  uint8_t x, uint8_t y)
 {
 	for(int i = 0; i<5;i++)
@@ -257,6 +338,56 @@ void OLED1306Display::drawCharFromGraphicArray(uint8_t c,  uint8_t x, uint8_t y)
 		}
 	}
 }
+void OLED1306Display::drawChar8x16FromGraphicArray(uint8_t c,  uint8_t x, uint8_t y)
+{
+	int j = 0;
+	for(int i = 0; i<16;i++)
+	{
+		if(x+i<cols)
+		{
+			if(i==8){ y+=8; j = 0;}
+			buffer[(y/PIXEL_PER_ROW)*cols+x+j] = chars8x16[c][i];
+		}
+		else
+		{
+			return;
+		}
+		j++;
+	}
+}
+
+void OLED1306Display::drawStringUtf8x16(const char* str, uint8_t x, uint8_t y)
+{
+	int strSize = strlen(str);
+
+	for(int i = 0,j = 0;i<strSize;i++,j++)
+	{
+		uint8_t indexInGraphicArray = 0;
+		char saved = str[i];
+		unsigned short int value = 0;
+
+		if(str[i]<=COUNT_SPECIAL_8x16)
+		{
+			indexInGraphicArray = str[i]-1;
+		}
+		else
+			if(str[i]>122)
+			{
+				value = str[i];
+				value = value<<8;
+				i++;
+				value|=str[i];
+				if(saved == CHARACTER_UTFRUS_SIGNOFFS1)
+					indexInGraphicArray = value-CHARACTER_UTFRUS_OFFSET1+GRAPHICFONT_RUSOFFS1+COUNT_SPECIAL_8x16;
+				else
+					indexInGraphicArray = value-CHARACTER_UTFRUS_OFFSET2+GRAPHICFONT_RUSOFFS2+COUNT_SPECIAL_8x16;
+			}else
+			{
+				indexInGraphicArray = str[i]-GRAPHICFONT_ASCIIENGOFFS+COUNT_SPECIAL_8x16;
+			}
+		drawChar8x16FromGraphicArray(indexInGraphicArray,x+j*(GRAPHICFONT_CHAR_W+GRAPHICFONT_CHARSPACE_INPIX*2),y);
+	}
+}
 
 void OLED1306Display::drawStringUtf(const char* str, uint8_t x, uint8_t y)
 {
@@ -267,6 +398,12 @@ void OLED1306Display::drawStringUtf(const char* str, uint8_t x, uint8_t y)
 		uint8_t indexInGraphicArray = 0;
 		char saved = str[i];
 		unsigned short int value = 0;
+
+		if(str[i]<=COUNT_SPECIAL)
+		{
+			indexInGraphicArray = str[i]-1;
+		}
+		else
 		if(str[i]>122)
 		{
 			value = str[i];
@@ -274,12 +411,12 @@ void OLED1306Display::drawStringUtf(const char* str, uint8_t x, uint8_t y)
 			i++;
 			value|=str[i];
 			if(saved == CHARACTER_UTFRUS_SIGNOFFS1)
-			indexInGraphicArray = value-CHARACTER_UTFRUS_OFFSET1+GRAPHICFONT_RUSOFFS1;
+			indexInGraphicArray = value-CHARACTER_UTFRUS_OFFSET1+GRAPHICFONT_RUSOFFS1+COUNT_SPECIAL;
 			else
-		    indexInGraphicArray = value-CHARACTER_UTFRUS_OFFSET2+GRAPHICFONT_RUSOFFS2;
+		    indexInGraphicArray = value-CHARACTER_UTFRUS_OFFSET2+GRAPHICFONT_RUSOFFS2+COUNT_SPECIAL;
 		}else
 		{
-			indexInGraphicArray = str[i]-GRAPHICFONT_ASCIIENGOFFS;
+			indexInGraphicArray = str[i]-GRAPHICFONT_ASCIIENGOFFS+COUNT_SPECIAL;
 		}
 	    drawCharFromGraphicArray(indexInGraphicArray,x+j*(GRAPHICFONT_CHAR_W+GRAPHICFONT_CHARSPACE_INPIX),y);
 	}

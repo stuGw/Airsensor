@@ -31,6 +31,9 @@ RTCTime time;//using to configure and read realtime
 uint8_t flagSecund{ 0 };
 AnalogConverter adc;
 
+
+
+
 void RTCIrq_Handler()
 {
 	if((RTC->MISR & 0x00000001) == 0x00000001){ RTC->SCR |= 0x00000001; /*flagMinute = 1;*/}
@@ -664,6 +667,9 @@ int main()
 
 
 		float vbat { 0 };
+		int vbatD { 0 };
+		float voltageBatterymV { 0.0 };
+		float vbatM { 0 };
 		int32_t tSHT40, hSHT40;
 
 		if(flagSecund)
@@ -672,6 +678,9 @@ int main()
 			flagSecund = 0;
 
 			vbat = vMeter.getVoltage(adc.getDataFiltered(AnalogConverter::ADC_8));
+			voltageBatterymV = vbat*1000;
+			vbatD = vbat;
+			vbatM = (vbat - vbatD)*10;
 			//GET SHT40 DATA
 			bool shtErr = sensor->read(&tSHT40, &hSHT40);
 			if(shtErr == 0) shtErr = sensor->startMeasure();
@@ -685,6 +694,7 @@ int main()
 			uint16_t raw_v;
 			uint8_t status { 0 };
 			bool ccs811Err { 0 };
+			sensor811.setEnviromentalData(tSHT40, hSHT40);
 			//// get the results and do something with them
 			if (sensor811.getResults(&tvoc, &eco2, &raw_i, &raw_v)){}
 			else
@@ -698,7 +708,6 @@ int main()
 			}
 			else
 				LOG->DEBG("Error get status from CCS811!");
-
 
 			//BME680
 			bool bme680Err = bme680_get_sensor_data(&data, &gsens);
@@ -715,6 +724,9 @@ int main()
 			}
 
 			//SGP30
+
+
+			sgp30Sensor.setAbsoluteHumidity(hSHT40);
 
 			bool sgp30Err = sgp30Sensor.readIAQ(&tvoc_ppb, &co2_eq_ppm);
 			if (err == SGP30::STATUS_OK)
@@ -738,76 +750,21 @@ int main()
 			int value = getGasScore();
 			int score = (100-value)*5;
 
-		/*	std::string* str = new std::string(" ");
-			//str = "";
-			if(!shtErr) *str= std::to_string(tSHT40/1000);else {}
-			*str+="\370";
-			*str+= "C, ";
-			if(!bme680Err) *str+= std::to_string(data.temperature/100);
-			*str+="\370";
-			*str+="C, ";
-			if(!shtErr)*str+= std::to_string(hSHT40/1000); else {}
-			*str+="%, ";
-			if(!bme680Err) *str+= std::to_string(data.humidity/1000); else {}
-			*str+= "%, ";
-			if(!bme680Err) *str+= std::to_string(data.pressure); else {}
-			*str+= "Pa, VOC(CCS811) = ";
-			if(!ccs811Err) *str+= std::to_string(tvoc); else {}
-			*str+= ", VOC(SGP30) = ";
-			if(!sgp30Err) *str+= std::to_string(tvoc_ppb); else {}
-			*str+= ", ECO2(CCS811)";
-			if(!ccs811Err) *str+= std::to_string(eco2); else {}
-			*str+= ", ECO2(SGP30) = ";
-			if(!sgp30Err) *str+= std::to_string(co2_eq_ppm);
-			*str+= ", RES(BME680) = ";
-			if(!bme680Err) *str+= std::to_string(data.gas_resistance);
-			*str+= ", GAS(BME680) = ";
-			if(!bme680Err) *str+= std::to_string(value);
-			*str+= ", GS(BME680) = ";
-			if(!bme680Err) *str+= std::to_string(score);
 
-			LOG->DEBG(str->c_str());
-
-			std::string* str2 = new std::string(" ");
-			delete str;
-
-			if(!shtErr) *str2= std::to_string(tSHT40);
-			*str2+= ",";
-			if(!bme680Err) *str2+= std::to_string(data.temperature);
-			*str2+=",";
-			if(!shtErr) *str2+= std::to_string(hSHT40);
-			*str2+=",";
-			if(!bme680Err) *str2+= std::to_string(data.humidity);
-			*str2+= ",";
-			if(!bme680Err) *str2+= std::to_string(data.pressure);
-			*str2+= ",";
-			if(!ccs811Err) *str2+= std::to_string(tvoc);
-			*str2+= ",";
-			if(!sgp30Err) *str2+= std::to_string(tvoc_ppb);
-			*str2+= ",";
-			if(!ccs811Err)  *str2+= std::to_string(eco2);
-			*str2+= ",";
-			if(!sgp30Err) *str2+= std::to_string(co2_eq_ppm);
-			*str2+= ",";
-			if(!bme680Err) *str2+= std::to_string(data.gas_resistance);
-			*str2+= ",";
-			if(!bme680Err)*str2+= std::to_string(value);
-
-			*str2+= ",";
-			if(!bme680Err)*str2+= std::to_string(score);
-
-			LOG->DATA(str2->c_str());
-
-			delete str2;*/
 
 			std::string *weatherString = new std::string(" ");
-			*weatherString = "t";
+			std::string *temperatureString = new std::string(" ");
 			if(!bme680Err && !shtErr)
 			{
-				*weatherString+= std::to_string(((int)(tSHT40/1000) + (int)(data.temperature/100))/2);
-				*weatherString+="C  ";
+				*weatherString = std::to_string(((int)(tSHT40/1000) + (int)(data.temperature/100))/2);
+
+				*weatherString+="C";
+				*weatherString+=(char)4;
+				*weatherString+=" ";
+				*weatherString+=(char)3;
 				*weatherString+=std::to_string((int)((data.humidity/1000) + (int)(hSHT40/1000))/2);
-				*weatherString += "%  ";
+				*weatherString += "% ";
+				*weatherString+=(char)2;
 				*weatherString += std::to_string((int)((float)data.pressure/133.3));
 
 			}
@@ -816,7 +773,7 @@ int main()
 				if(shtErr)
 				{
 					*weatherString+= std::to_string((int)(data.temperature/100));
-					*weatherString+="C  ";
+					*weatherString+="C";
 					*weatherString+=std::to_string((int)(data.humidity/1000));
 					*weatherString += "%  ";
 					*weatherString += std::to_string((int)((float)data.pressure/133.3));
@@ -824,20 +781,21 @@ int main()
 				else
 				{
 					if(!bme680Err)
-						{
+					{
 						*weatherString+= std::to_string(((int)(tSHT40/1000) + (int)(data.temperature/100))/2);
-						*weatherString+="C  ";
-								*weatherString+=std::to_string((int)((data.humidity/1000) + (int)(hSHT40/1000))/2);
-								*weatherString += "%  ";
-								*weatherString += std::to_string((int)((float)data.pressure/133.3));
-						}
+						*weatherString+="C";
+						*weatherString+="я"+2;
+						*weatherString+=std::to_string((int)((data.humidity/1000) + (int)(hSHT40/1000))/2);
+						*weatherString += "%  ";
+						*weatherString += std::to_string((int)((float)data.pressure/133.3));
+					}
 					else
 					{
 
 						*weatherString += "Err!";
 						*weatherString+="C  ";
-								*weatherString+="Err!";
-								*weatherString += "%  ";
+						*weatherString+="Err!";
+						*weatherString += "%  ";
 
 					}
 				}
@@ -845,78 +803,148 @@ int main()
 
 			*weatherString += "ммрс";
 
-			//*weatherString+="C  ";
-			//*weatherString+=std::to_string((int)((data.humidity/1000) + (int)(hSHT40/1000))/2);
-			//*weatherString += "%  ";
-			//*weatherString += std::to_string((int)((float)data.pressure/133.3));
-			//*weatherString += "ммрс";
-
-			//std::string* humidityString = new std::string(" ");
-			//	*humidityString = "Влажнoсть-";
-			//	*humidityString += std::to_string((int)((data.humidity/1000) + (int)(hSHT40/1000))/2);
-			//	*humidityString += "%,";
-				//*humidityString += std::to_string((int)(hSHT40/1000));
-				//*humidityString += "%";
-//
-			//	std::string* temperatureString = new std::string(" ");
-			////	*temperatureString = "t1-";
-			//	*temperatureString += std::to_string(((int)(tSHT40/1000) + (int)(data.temperature/100))/2);
-			//	*temperatureString += "C, ";
-			//	*temperatureString += "t2-";
-			//	*temperatureString += std::to_string((int)(data.temperature/100));
-			//	*temperatureString += "C, ";
 
 
+			std::string* TVOCString = new std::string("000000");
+			//*TVOCString = "V-(";
+			*TVOCString = TVOCString->replace(TVOCString->length()-std::to_string(tvoc).length(), std::to_string(tvoc).length(), std::to_string(tvoc));
+			//*TVOCString += ' ';
+			//*TVOCString += (char)1;
+			//*TVOCString += std::to_string(tvoc_ppb);
+			//*TVOCString += ")";
+
+			std::string* CO2String = new std::string("000000");
+			//CO2String->
+			//*CO2String = "C-(";
+			*CO2String = CO2String->replace(CO2String->length()-std::to_string(eco2).length(), std::to_string(eco2).length(), std::to_string(eco2));
+			//*CO2String += ' ';//(char)2;
+			//*CO2String += (char)2;
+			//*CO2String += (char)3;
+			//*CO2String += (char)4;
+			//*CO2String += ") (";
+			//*CO2String += std::to_string(co2_eq_ppm);
+			//*CO2String += ")";
+
+			std::string* bmeString = new std::string(" ");
+			*bmeString = "BME -";
+			*bmeString += std::to_string(500-((data.gas_resistance-50000)/400));
+			*bmeString += " IAQ";
+
+			std::string* resistanceString = new std::string("000000");
+			//*resistanceString = "Сопр.-";
+			if(data.gas_resistance>999999)data.gas_resistance = 999999;
+			*resistanceString = resistanceString->replace(resistanceString->length() - std::to_string(data.gas_resistance).length(), std::to_string(data.gas_resistance).length(),  std::to_string(data.gas_resistance));
+			//*resistanceString += " Ohm";
 
 
-			//	std::string* pressureString = new std::string(" ");
-			//	*pressureString = "Давление-";
-			//	*pressureString += std::to_string((int)((float)data.pressure/133.3));
-			//	*pressureString += "mm";
-
-				std::string* TVOCString = new std::string(" ");
-				*TVOCString = "V-(";
-				*TVOCString += std::to_string(tvoc);
-				*TVOCString += ") (";
-				*TVOCString += std::to_string(tvoc_ppb);
-				*TVOCString += ")";
-
-				std::string* CO2String = new std::string(" ");
-				*CO2String = "C-(";
-				*CO2String += std::to_string(eco2);
-				*CO2String += ") (";
-				*CO2String += std::to_string(co2_eq_ppm);
-				*CO2String += ")";
-
-				std::string* bmeString = new std::string(" ");
-				*bmeString = "BME -";
-				*bmeString += std::to_string(500-((data.gas_resistance-50000)/400));
-				*bmeString += " IAQ";
-
-				std::string* resistanceString = new std::string(" ");
-				*resistanceString = "Сопр.-";
-				*resistanceString += std::to_string(data.gas_resistance);
-				*resistanceString += " Ohm";
-
-
-				std::string* voltageString = new std::string(" ");
-				*voltageString = "Напр. АКБ-";
-				*voltageString += std::to_string((int)(vbat*1000.0));
-
-
+			std::string* voltageString = new std::string(" ");
+			*voltageString = "Напр. АКБ-";
+			*voltageString = std::to_string((int)vbatD);
+			*voltageString += ',';//std::to_string((int)vbatD);
+			*voltageString += std::to_string((int)vbatM);
+			*voltageString += "В";//std::to_string((int)vbatD);
+				char sensorType { 'O' };
+				std::string* sensorTypeString = new std::string("ТД-");
+				*sensorTypeString += sensorType;
 
 				display.drawString(*weatherString,0,0);
+
+				//display.drawChar8x16FromGraphicArray(1, 64, 32);
+				//display.drawChar8x16FromGraphicArray(2, 72, 32);
+				//display.drawCharFromGraphicArray('2'-28, 80, 32);
+				display.drawHorizontalLine(0,127,9);
+				display.drawVerticalLine(10,63,90);
+
+
+
+
+
+				display.drawBattery(voltageBatterymV, 96, 24, false);
+				///int8_t chargeGraphValueX = GRAPHIC_BATTERY_RANGE-(LION_MAX_VOLTAGE - voltageBatterymV)/GRAPHIC_BATTERY_COEF;//()
+				//if(chargeGraphValueX>22)chargeGraphValueX = 0;
+				//if(chargeGraphValueX<0)chargeGraphValueX = GRAPHIC_BATTERY_RANGE;
+				//display.drawHorizontalLine(96, chargeGraphValueX, 25);
+				//display.drawHorizontalLine(96,chargeGraphValueX,26);
+				//display.drawHorizontalLine(96,chargeGraphValueX,27);
+				//display.drawHorizontalLine(96,chargeGraphValueX,28);
+				//display.drawHorizontalLine(96,chargeGraphValueX,29);
+				//display.drawHorizontalLine(96,chargeGraphValueX,30);
+			//	display.drawHorizontalLine(96,chargeGraphValueX,31);
+
+
+
+
+		/*
+		{
+					display.drawHorizontalLine(x,22,y);
+									display.drawHorizontalLine(x,22,y+8);
+									display.drawVerticalLine(y,y+8,x);
+									display.drawVerticalLine(y+1,33,x-1);
+									display.drawVerticalLine(y+1,33,x-2);
+									display.drawVerticalLine(y+2,34,x+22);
+
+									xe = 22-(4200 - voltage)
+//1200 =
+
+									if(voltage>3000)
+									{
+
+									}
+									if(voltage>)
+		}*/
+
+
+			//	display.drawVerticalLine(24,31,120);
+			/*	display.drawChar8x16FromGraphicArray(16,  0, 16);
+				display.drawChar8x16FromGraphicArray(17,  10, 16);
+				display.drawChar8x16FromGraphicArray(18,  20, 16);
+				display.drawChar8x16FromGraphicArray(19,  30, 16);
+
+				display.drawChar8x16FromGraphicArray(20,  0, 32);
+				display.drawChar8x16FromGraphicArray(21,  10, 32);
+				display.drawChar8x16FromGraphicArray(22,  20, 32);
+				display.drawChar8x16FromGraphicArray(23,  30, 32);
+
+				display.drawChar8x16FromGraphicArray(24,  0, 48);
+								display.drawChar8x16FromGraphicArray(25,  10, 48);
+								display.drawChar8x16FromGraphicArray(22,  20, 48);
+								display.drawChar8x16FromGraphicArray(23,  30, 48);*/
+
+				display.drawStringUtf8x16("      ", 32, 16);
+				display.drawStringUtf8x16(resistanceString->c_str(), 32, 16);
+				display.drawStringUtf8x16("      ", 32, 32);
+				display.drawStringUtf8x16(TVOCString->c_str(), 32, 32);
+				display.drawStringUtf8x16("      ", 32, 48);
+				display.drawStringUtf8x16(CO2String->c_str(), 32, 48);
+				display.drawStringUtf("СОПР", 0, 24);
+				display.drawStringUtf("ОРГС", 0, 40);
+				display.drawStringUtf("УГЛГ", 0, 56);
+
+				display.drawStringUtf(sensorTypeString->c_str(),94,56);
+				display.drawStringUtf(voltageString->c_str(),94,16);
+
+
+								//display.drawCharFromGraphicArray(0x9e, 0, 0
+				//display.drawCharFromGraphicArray(0x9e, 0, 0);
+				//display.drawCharFromGraphicArray(' ', 8, 0);
+				//display.drawCharFromGraphicArray(0x9e, 16, 0);
+				//display.drawCharFromGraphicArray(0x9f, 24, 0);
+				//display.drawCharFromGraphicArray(' ', 32, 0);
+				//display.drawCharFromGraphicArray(0xa0, 40, 0);
+				//display.drawCharFromGraphicArray(' ', 48, 0);
+				//display.drawCharFromGraphicArray(0xa1, 56, 0);
+				//diaplay.drawString()
 				//display.drawString(*humidityString,0,8);
 				//display.drawString(*pressureString,0,16);
-				display.drawString(*TVOCString,0,24);
-				display.drawString(*CO2String,0,32);
-				display.drawString(*bmeString,0,40);
-				display.drawString(*resistanceString,0,48);
-				display.drawString(*voltageString,0,8);
+			//	display.drawString(*TVOCString,0,24);
+			//	display.drawString(*CO2String,0,32);
+			//	display.drawString(*bmeString,0,40);
+			//	display.drawString(*resistanceString,0,48);
+			//	display.drawString(*voltageString,0,8);
 				display.refresh();
 
 			//	delete humidityString;
-			//	delete temperatureString;
+				delete temperatureString;
 			//	delete pressureString;
 				delete TVOCString;
 				delete CO2String;
@@ -924,6 +952,7 @@ int main()
 				delete weatherString;
 				delete voltageString;
 				delete bmeString;
+				delete sensorTypeString;
 
 		}
 
